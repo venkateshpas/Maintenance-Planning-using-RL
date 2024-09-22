@@ -230,7 +230,7 @@ def one_full_iteration(episodes,param1,param2,heuristic):
 
             cost = cost_action
             if is_system_failed(state):
-                cost -= 10000
+                cost -= 2400
             total_ep_cost[ep] += gamma**i*cost
 
             
