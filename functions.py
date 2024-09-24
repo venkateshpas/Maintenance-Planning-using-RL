@@ -1,6 +1,7 @@
 import numpy as np
 from heuristics import *
 import csv
+import random
 
 ncomp = 5 # No. of components in the system
 nstcomp = 4 # No. of states for each component.. 1: no damage, 2: minor-damage, 3: major-damage, 4: failure
@@ -341,6 +342,131 @@ def plot_age_results(results):
     plt.show()
 
 
+def action_plot(episodes,heuristic,results):
+    r1_values = np.array([res[0] for res in results])
+    r2_values = np.array([res[1] for res in results])
+    total_avg_costs = np.array([res[4] for res in results])
+    max_index = np.argmax(total_avg_costs)
+    param1 = r1_values[max_index]
+    param2 = r2_values[max_index]
+
+    buffer_batch = 50 #Possibly a batch size to process at once?
+    buffer_memo_size = 100 #The maximum memory (no. of experiences) that the algorithm can remember
+    ep_length = 50 # 50 years ?
+    gamma = 0.975 # The discount factor ?
+
+    buffer_state = np.zeros((buffer_memo_size, ncomp, nstcomp, 1)) #For each of the past 100 experiences, this is used to store the state
+    buffer_time = np.zeros((buffer_memo_size)) #Maybe to store the time step?
+    buffer_action = np.zeros((buffer_memo_size,ncomp),dtype=int) #Actions taken for each of the step for the past 100 experiences, also for each of the component
+    buffer_cost = np.zeros(buffer_memo_size) #Stores the immediate cost after an action for each state.
+
+    buffer_terminal_flag = np.zeros(buffer_memo_size) #Maybe to indicate if system failed during the past 100 experiences
+    buffer_count = 0 
+
+    total_ep_cost = np.zeros(episodes+1) #Total cost for each episode
+    
+    for ep in range(0,episodes+1):
+        oo = np.zeros(5) # What is this?
+        state = np.zeros((1,ncomp,nstcomp,1))
+        state[0,:,0,0] = 1 # Every component, initial state is no damage .. so the first row for every component is made 1
+        actions_in_final_episode = []
+        state_in_final_episode = []
+        total_ep_cost[ep] = 0
+
+        age_components = np.zeros((1,ncomp),dtype=int)
+
+        for i in range(0,ep_length):
+            if buffer_count == buffer_memo_size:
+                buffer_count = 0
+            
+            action = []
+            action = np.zeros((1,ncomp),dtype=int)
+            #Write a code that tries to find optimized action .. ? #Here contrary to state_action, we need to take an action based on current state.
+            '''
+            If current state not good enough (failure), then the action must be repair
+            If current state is good enough, then no action
+            When to inspect but? Maybe when current state is minor/major?
+            '''
+            if heuristic == 'risk':
+                action = risk_heuristic(ncomp, state,action,param1,param2)
+            elif heuristic == 'age':
+                action = age_heuristic(ncomp,state,action,param1,param2,age_components)
+            
+            for j in range(0,ncomp):
+                if action[0,j] == 2:
+                    age_components[0,j] = 0
+                else:
+                    age_components[0,j]+=1
+
+            cost_action = immediatecost(action, cost_comp_action)
+            state_a = state_action(state,action) #This basically does something to the state based on our action .. either restore it or keep it as it is
+
+
+            cost = cost_action
+            if is_system_failed(state):
+                cost -= 2400
+            total_ep_cost[ep] += gamma**i*cost
+
+            
+            state_dot,oo = system_state(state_a,pcomp1,action)
+            buffer_state[buffer_count] = state
+            buffer_time[buffer_count] = i
+            buffer_action[buffer_count] = action
+            buffer_cost[buffer_count] = cost
+
+            if i==ep_length-1:
+                flag=1
+                buffer_terminal_flag[buffer_count] = flag
+            else:
+                flag = 0
+                buffer_terminal_flag[buffer_count] = flag
+
+            state = state_dot
+            buffer_count+=1
+
+            if ep == episodes:
+                actions_in_final_episode.append(action.copy())
+                state_in_final_episode.append(state_dot.copy())
+
+
+        '''
+        More code here
+        '''
+    actions_ = actions_in_final_episode
+    state_beliefs = state_in_final_episode
+    if not isinstance(actions_, np.ndarray):
+        actions_ = np.array(actions_)
+    if not isinstance(state_beliefs,np.ndarray):
+        state_beliefs = np.array(state_beliefs)           
+    state_beliefs_squeezed = state_beliefs.squeeze(axis=(1, 4))
+    fig, axes = plt.subplots(ncomp, 2, figsize=(18, 12), gridspec_kw={'width_ratios': [1, 1]})
+
+    # Loop through each component and create heatmaps and action plots
+    for i in range(ncomp):
+        # Heatmap
+        sns.heatmap(state_beliefs_squeezed[:, i, :].T, ax=axes[i, 0], cmap='viridis',  # Time steps (1-50)
+                    yticklabels=['No Damage', 'Minor Damage', 'Major Damage', 'Failure'])
+        
+        # Set titles and labels for heatmap
+        axes[i, 0].set_title(f'State Heatmap for Component {i + 1}')
+        axes[i, 0].set_ylabel('States')
+        axes[i, 0].invert_yaxis()  # Invert y-axis to have state 1 at the bottom
+        y_tick_labels = ['Do Nothing', 'Inspect', 'Repair']
+        # Action plot
+        axes[i, 1].plot(range(1, 51), actions_[:, :, i])
+        axes[i, 1].set_title(f'Actions for Component {i + 1}')
+        axes[i, 1].set_ylabel('Action')
+        axes[i, 1].set_yticks(range(len(y_tick_labels)))  # Set y-ticks to [0, 1, 2]
+        axes[i, 1].set_yticklabels(y_tick_labels)  # Set custom y-tick labels
+        axes[i, 1].grid(False)
+
+    # Set common labels for the x-axis
+    axes[-1, 0].set_xlabel('Time Steps')  # X-label for the first column
+    axes[-1, 1].set_xlabel('Time Steps')  # X-label for the second column
+    plt.tight_layout()  # Adjust layout to prevent overlap
+    plt.show()
+
+
 def write_to_csv(csv_file_name, results):
     with open(csv_file_name, mode='w', newline='') as csv_file:
         writer = csv.writer(csv_file)
@@ -350,3 +476,5 @@ def write_to_csv(csv_file_name, results):
 
         # Write the data
         writer.writerows(results)
+
+
