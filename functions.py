@@ -139,10 +139,33 @@ def system_state(state_a, pcomp1, action):
 
         if action[0,j] == 1:
             ob_dist = p1.dot(pobs_insp[j])
+            '''
+            Additional hack
+            '''
+            for idx in range(len(ob_dist)):
+                if ob_dist[idx] < 0:
+                    print(idx)
+                    ob_dist[idx] = -1*ob_dist[idx]
+            ob_dist /= np.sum(ob_dist)
+            ob_dist[-1] = 1.0 - np.sum(ob_dist[:-1])
+            '''
+            Till here
+            '''
             o[j] = np.random.choice(range(0,4), size = None, replace=True, p=ob_dist)
             state_next[0,j,:,0] =  p1 * pobs_insp[j,:,o[j]]/(p1.dot(pobs_insp[j,:,o[j]]))
         else:
             ob_dist = p1.dot(pobs_no_insp)
+            '''
+            Additional hack
+            '''
+            for idx in range(len(ob_dist)):
+                if ob_dist[idx] < 0:
+                    ob_dist[idx] = -1*ob_dist[idx]
+            ob_dist /= np.sum(ob_dist)
+            ob_dist[-1] = 1.0 - np.sum(ob_dist[:-1])
+            '''
+            Till here
+            '''
             o[j] = np.random.choice(range(0,2), size=None, replace=True, p=ob_dist)
             state_next[0,j,:,0] = p1* pobs_no_insp[:,o[j]]/(p1.dot(pobs_no_insp[:,o[j]]))
     return state_next,o
